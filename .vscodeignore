@@ -1,0 +1,13 @@
+.vscode/**
+.github/**
+src/**
+node_modules/**
+out/**
+.eslintrc.json
+tsconfig.json
+esbuild.js
+*.vsix
+.gitignore
+**/*.map
+**/*.ts
+!dist/**
