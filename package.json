@@ -3,7 +3,7 @@
   "displayName": "DevAI – AI Coding Assistant",
   "description": "Production-grade AI coding assistant powered by Claude. Generate, debug, explain and refactor code with live web search.",
   "version": "1.0.0",
-  "publisher": "devai",
+  "publisher": "devai-studio",
   "license": "MIT",
   "icon": "assets/icon.png",
   "engines": { "vscode": "^1.85.0" },
