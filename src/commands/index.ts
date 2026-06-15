@@ -1,122 +1,103 @@
 import * as vscode from 'vscode';
-import { ChatPanel }               from '../webview/ChatPanel';
-import { ClaudeClient }            from '../api/claude';
+import { ChatPanel }        from '../webview/ChatPanel';
+import { OllamaClient }     from '../api/ollama';
 import { getEditorContext, buildContextBlock } from '../utils/context';
 
 export function registerCommands(
   ctx:    vscode.ExtensionContext,
   panel:  ChatPanel,
-  client: ClaudeClient,
+  client: OllamaClient,
 ): void {
 
-  // ── Open Chat ──────────────────────────────────────────────────────────────
   reg(ctx, 'devai.openChat', () => {
     vscode.commands.executeCommand('devai.chatView.focus');
   });
 
-  // ── Set API Key ────────────────────────────────────────────────────────────
   reg(ctx, 'devai.setApiKey', async () => {
-    const key = await vscode.window.showInputBox({
-      prompt:      'Enter your Anthropic Claude API key',
-      password:    true,
-      placeHolder: 'sk-ant-api03-…',
-      validateInput: v => v?.startsWith('sk-') ? null : 'Key must start with sk-',
-    });
-    if (key) {
-      await client.setApiKey(key);
-      vscode.window.showInformationMessage('DevAI: API key saved ✓');
-    }
+    vscode.window.showInformationMessage('DevAI uses Ollama (local) — no API key needed! Just run: ollama serve');
   });
 
-  // ── Clear History ──────────────────────────────────────────────────────────
   reg(ctx, 'devai.clearHistory', () => {
     vscode.commands.executeCommand('devai.chatView.focus');
-    panel.sendWithContext('', 'chat'); // triggers clear via UI
   });
 
-  // ── Explain Code ──────────────────────────────────────────────────────────
   reg(ctx, 'devai.explainCode', async () => {
-    const ec = requireSelection('explain');
-    if (!ec) { return; }
+    const ec = requireSel('explain'); if (!ec) { return; }
     await panel.sendWithContext(
-      `Explain this ${ec.language} code in detail:\n\n\`\`\`${ec.language}\n${ec.selection}\n\`\`\``,
+      `Explain this ${ec.language} code in detail:\n\`\`\`${ec.language}\n${ec.selection}\n\`\`\``,
       'explain',
     );
   });
 
-  // ── Generate Code ──────────────────────────────────────────────────────────
   reg(ctx, 'devai.generateCode', async () => {
     const ec = getEditorContext();
     const prompt = await vscode.window.showInputBox({
-      prompt:      'Describe the code you want to generate',
-      placeHolder: 'e.g. a React hook that debounces an input value',
+      prompt: 'Describe the code to generate',
+      placeHolder: 'e.g. RSpec test for a customer creation flow',
     });
     if (!prompt) { return; }
-
     const ctx_block = ec ? buildContextBlock(ec) : '';
-    await panel.sendWithContext(
-      ctx_block + '\n\nGenerate: ' + prompt,
-      'generate',
-    );
+    await panel.sendWithContext(ctx_block + '\n\nGenerate: ' + prompt, 'generate');
   });
 
-  // ── Debug / Fix Code ───────────────────────────────────────────────────────
   reg(ctx, 'devai.debugCode', async () => {
-    const ec = requireSelection('debug');
-    if (!ec) { return; }
+    const ec = requireSel('debug'); if (!ec) { return; }
     await panel.sendWithContext(
-      `Debug and fix this ${ec.language} code. Identify the bug and return a corrected version:\n\n\`\`\`${ec.language}\n${ec.selection}\n\`\`\``,
+      `Debug and fix this ${ec.language} code:\n\`\`\`${ec.language}\n${ec.selection}\n\`\`\``,
       'debug',
     );
   });
 
-  // ── Refactor Code ─────────────────────────────────────────────────────────
   reg(ctx, 'devai.refactorCode', async () => {
-    const ec = requireSelection('refactor');
-    if (!ec) { return; }
+    const ec = requireSel('refactor'); if (!ec) { return; }
     await panel.sendWithContext(
-      `Refactor this ${ec.language} code for readability, performance, and modern best practices:\n\n\`\`\`${ec.language}\n${ec.selection}\n\`\`\``,
+      `Refactor this ${ec.language} code for readability and best practices:\n\`\`\`${ec.language}\n${ec.selection}\n\`\`\``,
       'refactor',
     );
   });
 
-  // ── Generate Unit Tests ────────────────────────────────────────────────────
   reg(ctx, 'devai.generateTests', async () => {
-    const ec = requireSelection('tests');
-    if (!ec) { return; }
+    const ec = requireSel('tests'); if (!ec) { return; }
     await panel.sendWithContext(
-      `Write comprehensive unit tests for this ${ec.language} code:\n\n\`\`\`${ec.language}\n${ec.selection}\n\`\`\``,
+      `Write comprehensive ${ec.language} tests for:\n\`\`\`${ec.language}\n${ec.selection}\n\`\`\``,
       'tests',
     );
   });
 
-  // ── Add Comments / JSDoc ──────────────────────────────────────────────────
   reg(ctx, 'devai.addComments', async () => {
-    const ec = requireSelection('comments');
-    if (!ec) { return; }
+    const ec = requireSel('comments'); if (!ec) { return; }
     await panel.sendWithContext(
-      `Add comprehensive JSDoc/docstring documentation to this ${ec.language} code without changing any logic:\n\n\`\`\`${ec.language}\n${ec.selection}\n\`\`\``,
+      `Add full documentation/comments to this ${ec.language} code without changing logic:\n\`\`\`${ec.language}\n${ec.selection}\n\`\`\``,
       'comments',
     );
   });
+
+  // Quick model picker command
+  reg(ctx, 'devai.pickModel', async () => {
+    const models = await client.getModels();
+    if (!models.length) {
+      vscode.window.showWarningMessage('No Ollama models installed. Run: ollama pull qwen2.5-coder:7b');
+      return;
+    }
+    const pick = await vscode.window.showQuickPick(
+      models.map(m => ({ label: m.name, description: `${(m.size / 1e9).toFixed(1)} GB` })),
+      { placeHolder: 'Select Ollama model for DevAI' },
+    );
+    if (pick) {
+      await vscode.workspace.getConfiguration('devai').update('ollamaModel', pick.label, true);
+      vscode.window.showInformationMessage(`DevAI: switched to ${pick.label}`);
+    }
+  });
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function reg(
-  ctx:     vscode.ExtensionContext,
-  id:      string,
-  handler: (...args: unknown[]) => unknown,
-): void {
-  ctx.subscriptions.push(vscode.commands.registerCommand(id, handler));
+function reg(ctx: vscode.ExtensionContext, id: string, fn: (...a: unknown[]) => unknown) {
+  ctx.subscriptions.push(vscode.commands.registerCommand(id, fn));
 }
 
-function requireSelection(action: string) {
+function requireSel(action: string) {
   const ec = getEditorContext();
   if (!ec?.selection) {
-    vscode.window.showWarningMessage(
-      `DevAI: Select some code first to ${action} it.`,
-    );
+    vscode.window.showWarningMessage(`DevAI: Select code first to ${action} it.`);
     return null;
   }
   return ec;
